@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addLink,
   addNode,
   addSibling,
   childrenOf,
@@ -7,8 +8,10 @@ import {
   expandAncestors,
   indentNode,
   moveNode,
+  normalizeMap,
   outdentNode,
   pathTo,
+  removeLink,
   removeNode,
   reorderSibling,
   toggleCollapsed,
@@ -102,5 +105,41 @@ describe('tree', () => {
     const { map } = build()
     const next = expandAncestors(toggleCollapsed(map, 'a'), 'a2')
     expect(visibleNodes(next).map((node) => node.text)).toContain('A2')
+  })
+
+  it('crea flechas dirigidas sin duplicados ni enlaces a sí mismo', () => {
+    const { map } = build()
+    const withLink = addLink(map, 'a', 'b')
+    expect(withLink.links).toHaveLength(1)
+    expect(withLink.links[0].from).toBe('a')
+    expect(withLink.links[0].to).toBe('b')
+
+    expect(addLink(withLink, 'a', 'b')).toBe(withLink)
+    expect(addLink(withLink, 'a', 'a')).toBe(withLink)
+    expect(addLink(withLink, 'a', 'fantasma')).toBe(withLink)
+
+    const reverse = addLink(withLink, 'b', 'a')
+    expect(reverse.links).toHaveLength(2)
+  })
+
+  it('quita una flecha concreta', () => {
+    const { map } = build()
+    const withLink = addLink(map, 'a', 'b')
+    const linkId = withLink.links[0].id
+    expect(removeLink(withLink, linkId).links).toHaveLength(0)
+    expect(removeLink(withLink, 'no-existe')).toBe(withLink)
+  })
+
+  it('limpia las flechas de un nodo borrado con su subárbol', () => {
+    const { map } = build()
+    const withLinks = addLink(addLink(map, 'a1', 'b'), 'b', 'a2')
+    const next = removeNode(withLinks, 'a')
+    expect(next.links).toHaveLength(0)
+  })
+
+  it('completa el campo links en mapas guardados sin flechas', () => {
+    const { map } = build()
+    const old = { ...map, links: undefined } as unknown as typeof map
+    expect(normalizeMap(old).links).toEqual([])
   })
 })

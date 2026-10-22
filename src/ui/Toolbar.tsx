@@ -37,6 +37,8 @@ export function Toolbar() {
   const list = useStore((state) => state.list)
   const reviews = useStore((state) => state.reviews)
   const heat = useStore((state) => state.heat)
+  const linkMode = useStore((state) => state.linkMode)
+  const theme = useStore((state) => state.theme)
   const session = useStore((state) => state.session)
   const store = useStore
 
@@ -127,6 +129,23 @@ export function Toolbar() {
         </button>
         <button type="button" onClick={exportMd}>
           Markdown
+        </button>
+        <button
+          type="button"
+          className={linkMode ? 'toggle on' : 'toggle'}
+          onClick={() => store.getState().toggleLinkMode()}
+          title="Unir dos nodos con una flecha (L)"
+          aria-pressed={linkMode}
+        >
+          Enlazar
+        </button>
+        <button
+          type="button"
+          onClick={() => store.getState().toggleTheme()}
+          title={theme === 'dark' ? 'Pasar al modo claro' : 'Pasar al modo oscuro'}
+          aria-label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
+        >
+          {theme === 'dark' ? 'Claro' : 'Oscuro'}
         </button>
         <button
           type="button"

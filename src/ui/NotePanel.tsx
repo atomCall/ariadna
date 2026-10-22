@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { cardsForSubtree } from '../domain/cards'
-import { PALETTE } from '../domain/tree'
+import { PALETTE, linksOf } from '../domain/tree'
 import { isDue, retention } from '../domain/scheduler'
 import { useStore } from '../state/store'
 
@@ -12,6 +12,7 @@ interface Props {
 export function NotePanel({ nodeId, onClose }: Props) {
   const map = useStore((state) => state.map)
   const reviews = useStore((state) => state.reviews)
+  const linkMode = useStore((state) => state.linkMode)
   const store = useStore
   const node = map?.nodes[nodeId]
   const [draft, setDraft] = useState<{ id: string; text: string; note: string } | null>(null)
@@ -31,6 +32,15 @@ export function NotePanel({ nodeId, onClose }: Props) {
       score: values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length,
     }
   }, [map, nodeId, reviews])
+
+  const arrows = useMemo(() => {
+    if (!map) return []
+    return linksOf(map, nodeId).map((link) => {
+      const outgoing = link.from === nodeId
+      const otherId = outgoing ? link.to : link.from
+      return { id: link.id, outgoing, otherId, text: map.nodes[otherId]?.text ?? 'Nodo borrado' }
+    })
+  }, [map, nodeId])
 
   if (!map || !node) return null
 
@@ -104,6 +114,48 @@ export function NotePanel({ nodeId, onClose }: Props) {
             />
           ))}
         </div>
+      </div>
+
+      <div className="field">
+        <span>Flechas</span>
+        {arrows.length === 0 ? (
+          <p className="hint">Sin enlaces todavía.</p>
+        ) : (
+          <ul className="link-list">
+            {arrows.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className="link-target"
+                  onClick={() => {
+                    const state = store.getState()
+                    if (state.linkMode) state.linkClick(item.otherId)
+                    else state.select(item.otherId)
+                  }}
+                >
+                  <span aria-hidden="true">{item.outgoing ? '→' : '←'}</span>
+                  <span>{item.text}</span>
+                </button>
+                <button
+                  type="button"
+                  className="link-remove"
+                  onClick={() => store.getState().removeLink(item.id)}
+                  aria-label={`Quitar el enlace con ${item.text}`}
+                  title="Quitar enlace"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          className={linkMode ? 'toggle on' : ''}
+          onClick={() => store.getState().toggleLinkMode()}
+        >
+          {linkMode ? 'Cancelar enlace' : 'Enlazar con otro nodo'}
+        </button>
       </div>
 
       <div className="stats">

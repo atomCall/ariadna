@@ -42,6 +42,18 @@ Cuando no queda nada pendiente, el botón Repasar abre un repaso libre con las
 tarjetas que ya viste. El botón Calor pinta el mapa según tu retención por rama:
 rojo donde fallás, verde donde ya está firme.
 
+## Modo oscuro y flechas
+
+El botón Oscuro / Claro cambia la paleta y queda recordado en el navegador. Si es
+la primera vez, Ariadna respeta el tema del sistema.
+
+Además del árbol, podés unir dos nodos cualesquiera con una flecha dirigida.
+Activá Enlazar (o la tecla `L`), hacé clic en el nodo de origen y después en el
+de destino. La flecha se dibuja curva, con punta, y sigue a los nodos cuando el
+mapa se mueve. Para quitarla, doble clic sobre la flecha o usá la lista de
+Flechas del panel del nodo. Los enlaces se guardan en el mapa, viajan en el JSON
+y se descartan solos si borrás uno de los nodos que tocan.
+
 ## Atajos
 
 | Tecla | Acción |
@@ -56,8 +68,9 @@ rojo donde fallás, verde donde ya está firme.
 | `Supr` | borrar el nodo y su rama |
 | `Ctrl Z` / `Ctrl Shift Z` | deshacer / rehacer |
 | `Ctrl N` | abrir la nota del nodo |
+| `L` | activar o desactivar el modo enlace |
 | `1` a `4` | calificar durante el repaso |
-| `Esc` | salir del repaso |
+| `Esc` | cancelar el enlace o salir del repaso |
 
 ## Los datos son tuyos
 

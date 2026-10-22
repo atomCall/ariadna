@@ -10,6 +10,8 @@ const SHORTCUTS: [string, string][] = [
   ['Enter', 'hermano'],
   ['F2', 'renombrar'],
   ['Espacio', 'plegar'],
+  ['L', 'enlazar'],
+  ['Esc', 'cancelar'],
   ['Alt ↑ ↓', 'mover'],
   ['Alt ← →', 'sangrar'],
   ['Ctrl Z', 'deshacer'],
@@ -22,12 +24,17 @@ export default function App() {
   const list = useStore((state) => state.list)
   const selectedId = useStore((state) => state.selectedId)
   const notice = useStore((state) => state.notice)
+  const theme = useStore((state) => state.theme)
   const load = useStore((state) => state.load)
   const store = useStore
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
 
   useEffect(() => {
     if (!notice) return
@@ -76,7 +83,7 @@ export default function App() {
 
           <p className="rail-foot">
             Los nodos con hijos se convierten en preguntas. Los <code>{'{{huecos}}'}</code> de las
-            notas, en tarjetas de relleno.
+            notas, en tarjetas de relleno. Con la tecla <kbd>L</kbd> unes dos nodos con una flecha.
           </p>
         </aside>
 

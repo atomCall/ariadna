@@ -6,6 +6,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import App from '../src/App'
+import { db } from '../src/db/db'
 import { useStore } from '../src/state/store'
 
 declare global {
@@ -34,6 +35,17 @@ async function settle(ms = 60) {
 }
 
 beforeEach(async () => {
+  await db.maps.clear()
+  await db.reviews.clear()
+  localStorage.clear()
+  useStore.setState({
+    linkMode: false,
+    linkFrom: null,
+    session: null,
+    theme: 'light',
+    heat: false,
+  })
+  document.documentElement.dataset.theme = 'light'
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -110,5 +122,68 @@ describe('aplicación', () => {
 
     expect(useStore.getState().session).toBeNull()
     expect(Object.keys(useStore.getState().reviews).length).toBe(1)
+  })
+
+  it('cambia entre modo claro y oscuro', async () => {
+    const find = (label: string) =>
+      Array.from(host.querySelectorAll('button')).find((item) => item.textContent === label)
+
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(find('Oscuro')).toBeTruthy()
+
+    await act(async () => {
+      find('Oscuro')?.click()
+    })
+    await settle(20)
+
+    expect(useStore.getState().theme).toBe('dark')
+    expect(localStorage.getItem('ariadna-theme')).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(find('Claro')).toBeTruthy()
+
+    await act(async () => {
+      find('Claro')?.click()
+    })
+    await settle(20)
+
+    expect(document.documentElement.dataset.theme).toBe('light')
+  })
+
+  it('une dos nodos con una flecha y la quita con doble clic', async () => {
+    const rootId = useStore.getState().map?.rootId as string
+    await act(async () => {
+      useStore.getState().select(rootId)
+    })
+    await act(async () => {
+      useStore.getState().addChild()
+    })
+    const childId = useStore.getState().selectedId as string
+
+    await act(async () => {
+      useStore.getState().toggleLinkMode()
+    })
+    await act(async () => {
+      useStore.getState().linkClick(rootId)
+    })
+    expect(useStore.getState().linkFrom).toBe(rootId)
+
+    await act(async () => {
+      useStore.getState().linkClick(childId)
+    })
+    await settle(30)
+
+    expect(useStore.getState().map?.links).toHaveLength(1)
+    expect(host.querySelectorAll('.cross-link')).toHaveLength(1)
+    expect(host.querySelectorAll('.arrow-head')).toHaveLength(1)
+
+    const hit = host.querySelector('.cross-hit') as SVGPathElement
+    expect(hit).not.toBeNull()
+    await act(async () => {
+      hit.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    })
+    await settle(20)
+
+    expect(useStore.getState().map?.links).toHaveLength(0)
+    expect(host.querySelectorAll('.cross-link')).toHaveLength(0)
   })
 })

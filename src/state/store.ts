@@ -21,6 +21,23 @@ export interface ReviewSession {
   graded: Record<Grade, number>
 }
 
+export type Theme = 'light' | 'dark'
+
+const THEME_KEY = 'ariadna-theme'
+
+function initialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch {
+    // Algunos navegadores bloquean localStorage en modo privado.
+  }
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark'
+  }
+  return 'light'
+}
+
 interface State {
   ready: boolean
   map: MindMap | null
@@ -32,6 +49,9 @@ interface State {
   reviews: Record<string, ReviewRecord>
   session: ReviewSession | null
   heat: boolean
+  theme: Theme
+  linkMode: boolean
+  linkFrom: NodeId | null
   notice: string | null
 
   load: () => Promise<void>
@@ -57,6 +77,11 @@ interface State {
   setNote: (id: NodeId, note: string) => void
   importMarkdown: (text: string) => void
   toggleHeat: () => void
+  setTheme: (theme: Theme) => void
+  toggleTheme: () => void
+  toggleLinkMode: () => void
+  linkClick: (id: NodeId) => void
+  removeLink: (linkId: string) => void
   notify: (message: string | null) => void
 
   startReview: (scopeId?: NodeId) => void
@@ -98,6 +123,9 @@ export const useStore = create<State>((set, get) => ({
   reviews: {},
   session: null,
   heat: false,
+  theme: initialTheme(),
+  linkMode: false,
+  linkFrom: null,
   notice: null,
 
   load: async () => {
@@ -113,7 +141,7 @@ export const useStore = create<State>((set, get) => ({
       })
       return
     }
-    const doc = rows[0].doc
+    const doc = tree.normalizeMap(rows[0].doc)
     const reviewRows = await db.reviews.where('mapId').equals(doc.id).toArray()
     const reviews: Record<string, ReviewRecord> = {}
     for (const row of reviewRows) reviews[row.cardId] = row.record
@@ -174,24 +202,29 @@ export const useStore = create<State>((set, get) => ({
       future: [],
       reviews: {},
       session: null,
+      linkMode: false,
+      linkFrom: null,
     })
   },
 
   openMap: async (id) => {
     const row = get().list.find((item) => item.id === id) ?? (await db.maps.get(id))
     if (!row) return
+    const doc = tree.normalizeMap(row.doc)
     const reviewRows = await db.reviews.where('mapId').equals(id).toArray()
     const reviews: Record<string, ReviewRecord> = {}
     for (const item of reviewRows) reviews[item.cardId] = item.record
     set({
-      map: row.doc,
-      selectedId: row.doc.rootId,
+      map: doc,
+      selectedId: doc.rootId,
       editingId: null,
       past: [],
       future: [],
       reviews,
       session: null,
-      list: withRow(get().list, row.doc),
+      linkMode: false,
+      linkFrom: null,
+      list: withRow(get().list, doc),
     })
   },
 
@@ -234,7 +267,12 @@ export const useStore = create<State>((set, get) => ({
     if (!map || id === map.rootId) return
     const parentId = map.nodes[id]?.parentId ?? map.rootId
     get().apply(tree.removeNode(map, id))
-    set({ selectedId: parentId })
+    const linkFrom = get().linkFrom
+    const nextMap = get().map
+    set({
+      selectedId: parentId,
+      linkFrom: linkFrom && nextMap?.nodes[linkFrom] ? linkFrom : null,
+    })
   },
 
   toggleCollapsed: (id) => {
@@ -288,6 +326,60 @@ export const useStore = create<State>((set, get) => ({
   },
 
   toggleHeat: () => set({ heat: !get().heat }),
+
+  setTheme: (theme) => {
+    try {
+      localStorage.setItem(THEME_KEY, theme)
+    } catch {
+      // Si no se puede guardar, el tema vale solo para esta sesión.
+    }
+    set({ theme })
+  },
+
+  toggleTheme: () => get().setTheme(get().theme === 'dark' ? 'light' : 'dark'),
+
+  toggleLinkMode: () => {
+    const linkMode = !get().linkMode
+    set({ linkMode, linkFrom: null, editingId: null })
+    get().notify(
+      linkMode
+        ? 'Modo enlace: clic en el nodo de origen y después en el de destino.'
+        : null,
+    )
+  },
+
+  linkClick: (id) => {
+    const { map, linkFrom } = get()
+    if (!map || !map.nodes[id]) return
+    if (!linkFrom) {
+      set({ linkFrom: id, selectedId: id })
+      get().notify('Elegí el nodo de destino. Escape cancela.')
+      return
+    }
+    if (linkFrom === id) {
+      set({ linkFrom: null })
+      return
+    }
+    const next = tree.addLink(map, linkFrom, id)
+    if (next === map) {
+      set({ linkFrom: null })
+      get().notify('Ese enlace ya existe.')
+      return
+    }
+    get().apply(next)
+    set({ linkFrom: null, selectedId: id })
+    get().notify('Flecha creada. Doble clic sobre ella para quitarla.')
+  },
+
+  removeLink: (linkId) => {
+    const map = get().map
+    if (!map) return
+    const next = tree.removeLink(map, linkId)
+    if (next === map) return
+    get().apply(next)
+    get().notify('Flecha quitada.')
+  },
+
   notify: (message) => set({ notice: message }),
 
   startReview: (scopeId) => {
@@ -326,6 +418,8 @@ export const useStore = create<State>((set, get) => ({
       },
       selectedId: null,
       editingId: null,
+      linkMode: false,
+      linkFrom: null,
     })
   },
 
@@ -367,7 +461,7 @@ export const useStore = create<State>((set, get) => ({
     const map = get().map
     if (!map) return
     get().apply(tree.expandAncestors(map, id), false)
-    set({ session: null, selectedId: id, editingId: null })
+    set({ session: null, selectedId: id, editingId: null, linkFrom: null })
   },
 
   saveReviews: async () => {

@@ -81,13 +81,27 @@ function heatMapOf(
   return out
 }
 
-function heatColor(value: number | null): string {
-  if (value === null) return '#f6f3ec'
+function heatColor(value: number): string {
   const clamped = Math.max(0, Math.min(1, value))
   const red = Math.round(226 - 160 * clamped)
   const green = Math.round(120 + 90 * clamped)
   const blue = Math.round(110 - 40 * clamped)
   return `rgb(${red} ${green} ${blue})`
+}
+
+interface Box {
+  x: number
+  y: number
+  w: number
+}
+
+/** Curva entre dos cajas, saliendo por el borde más cercano al destino. */
+function crossLinkPath(from: Box, to: Box): string {
+  const forward = to.x + to.w / 2 >= from.x + from.w / 2
+  const x1 = forward ? from.x + from.w : from.x
+  const x2 = forward ? to.x : to.x + to.w
+  const bend = Math.max(36, Math.abs(x2 - x1) * 0.45) * (forward ? 1 : -1)
+  return `M ${x1} ${from.y} C ${x1 + bend} ${from.y}, ${x2 - bend} ${to.y}, ${x2} ${to.y}`
 }
 
 interface Props {
@@ -100,11 +114,14 @@ export function Canvas({ onOpenNote }: Props) {
   const editingId = useStore((state) => state.editingId)
   const reviews = useStore((state) => state.reviews)
   const heat = useStore((state) => state.heat)
+  const linkMode = useStore((state) => state.linkMode)
+  const linkFrom = useStore((state) => state.linkFrom)
   const store = useStore
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, k: 1 })
   const [size, setSize] = useState({ w: 800, h: 600 })
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
 
   useEffect(() => {
@@ -220,6 +237,16 @@ export function Canvas({ onOpenNote }: Props) {
       else state.undo()
       return
     }
+    if (event.key === 'Escape' && state.linkMode) {
+      event.preventDefault()
+      state.toggleLinkMode()
+      return
+    }
+    if (event.key.toLowerCase() === 'l' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault()
+      state.toggleLinkMode()
+      return
+    }
     if (event.key === 'Tab') {
       event.preventDefault()
       state.addChild()
@@ -273,17 +300,20 @@ export function Canvas({ onOpenNote }: Props) {
   }
 
   const editing = editingId ? positions.get(editingId) : undefined
+  const source = linkMode && linkFrom ? positions.get(linkFrom) : undefined
+  const previewPath =
+    source && pointer ? crossLinkPath(source, { x: pointer.x, y: pointer.y, w: 0 }) : null
 
   return (
     <div
-      className="canvas"
+      className={linkMode ? 'canvas linking' : 'canvas'}
       ref={wrapRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onWheel={onWheel}
       onPointerDown={(event) => {
         if (event.button !== 0) return
-        if ((event.target as Element).closest('button, input, textarea, .node')) return
+        if ((event.target as Element).closest('button, input, textarea, .node, .cross')) return
         const host = event.currentTarget as HTMLElement
         host.focus()
         host.setPointerCapture(event.pointerId)
@@ -291,6 +321,15 @@ export function Canvas({ onOpenNote }: Props) {
         store.getState().select(null)
       }}
       onPointerMove={(event) => {
+        if (linkMode && linkFrom) {
+          const rect = wrapRef.current?.getBoundingClientRect()
+          if (rect) {
+            setPointer({
+              x: (event.clientX - rect.left - view.x) / view.k,
+              y: (event.clientY - rect.top - view.y) / view.k,
+            })
+          }
+        }
         if (!drag.current) return
         setView((current) => ({
           ...current,
@@ -301,12 +340,25 @@ export function Canvas({ onOpenNote }: Props) {
       onPointerUp={() => {
         drag.current = null
       }}
+      onPointerLeave={() => setPointer(null)}
     >
       <svg width="100%" height="100%">
         <defs>
           <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="1" fill="#d9d3c6" />
+            <circle className="grid-dot" cx="1" cy="1" r="1" />
           </pattern>
+          <marker
+            id="arrow"
+            viewBox="0 0 10 10"
+            markerWidth="10"
+            markerHeight="10"
+            refX="9"
+            refY="5"
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
+            <path className="arrow-head" d="M 0 0 L 10 5 L 0 10 z" />
+          </marker>
         </defs>
         <rect width="100%" height="100%" fill="url(#grid)" />
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
@@ -325,50 +377,82 @@ export function Canvas({ onOpenNote }: Props) {
             )
           })}
 
+          {(map?.links ?? []).map((link) => {
+            const from = positions.get(link.from)
+            const to = positions.get(link.to)
+            if (!from || !to) return null
+            const path = crossLinkPath(from, to)
+            return (
+              <g key={link.id} className="cross">
+                <path className="cross-link" d={path} markerEnd="url(#arrow)" />
+                <path
+                  className="cross-hit"
+                  d={path}
+                  onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation()
+                    store.getState().removeLink(link.id)
+                  }}
+                >
+                  <title>Doble clic para quitar esta flecha</title>
+                </path>
+              </g>
+            )
+          })}
+
+          {previewPath ? (
+            <path className="cross-preview" d={previewPath} markerEnd="url(#arrow)" />
+          ) : null}
+
           {layout.placed.map((node) => {
             const isRoot = node.depth === 0
             const isSelected = node.id === selectedId
+            const isSource = node.id === linkFrom
             const value = heatValues.get(node.id) ?? null
             const fill = isRoot
-              ? '#22243b'
-              : heat
+              ? undefined
+              : heat && value !== null
                 ? heatColor(value)
                 : node.color
                   ? `${node.color}22`
-                  : '#fffdf8'
-            const stroke = isSelected ? '#e2453f' : (node.color ?? '#d9d3c6')
+                  : 'var(--card)'
+            const stroke =
+              isSource || isSelected ? 'var(--accent)' : (node.color ?? 'var(--line-strong)')
             return (
               <g
                 key={node.id}
-                className="node"
+                className={isSource ? 'node source' : 'node'}
                 transform={`translate(${node.x} ${node.y - NODE_H / 2})`}
                 onClick={(event) => {
                   event.stopPropagation()
                   wrapRef.current?.focus()
-                  store.getState().select(node.id)
+                  const state = store.getState()
+                  if (state.linkMode) state.linkClick(node.id)
+                  else state.select(node.id)
                 }}
                 onDoubleClick={(event) => {
                   event.stopPropagation()
+                  if (store.getState().linkMode) return
                   store.getState().startEditing(node.id)
                 }}
               >
                 <rect
-                  className="node-box"
+                  className={isRoot ? 'node-box node-box-root' : 'node-box'}
                   width={node.w}
                   height={NODE_H}
                   rx={isRoot ? 14 : 10}
-                  fill={fill}
-                  stroke={stroke}
-                  strokeWidth={isSelected ? 2 : 1.2}
+                  style={{ fill, stroke }}
+                  strokeWidth={isSource ? 2.6 : isSelected ? 2 : 1.2}
                 />
                 {node.color && !isRoot ? (
                   <rect x={0} y={0} width={4} height={NODE_H} rx={2} fill={node.color} />
                 ) : null}
                 <text
-                  className="node-text"
+                  className={
+                    isRoot ? 'node-text node-root-text' : heat ? 'node-text node-heat-text' : 'node-text'
+                  }
                   x={14}
                   y={NODE_H / 2 + 5}
-                  fill={isRoot ? '#f7f2e7' : '#232323'}
                   fontWeight={isRoot ? 600 : 400}
                 >
                   {truncate(node.text, node.w)}
@@ -383,18 +467,18 @@ export function Canvas({ onOpenNote }: Props) {
                     }}
                   >
                     <circle
+                      className={isRoot ? 'toggle-bg toggle-bg-root' : 'toggle-bg'}
                       cx={node.w - 13}
                       cy={NODE_H / 2}
                       r={9}
-                      fill={isRoot ? '#f7f2e7' : '#22243b'}
                       opacity={node.collapsed ? 1 : 0.75}
                     />
                     <text
+                      className={isRoot ? 'toggle-fg toggle-fg-root' : 'toggle-fg'}
                       x={node.w - 13}
                       y={NODE_H / 2 + 4}
                       textAnchor="middle"
                       fontSize={10}
-                      fill={isRoot ? '#22243b' : '#f7f2e7'}
                     >
                       {node.collapsed ? node.kids : '-'}
                     </text>
@@ -423,6 +507,17 @@ export function Canvas({ onOpenNote }: Props) {
             wrapRef.current?.focus()
           }}
         />
+      ) : null}
+
+      {linkMode ? (
+        <div className="link-hint">
+          <span>
+            {source
+              ? `Origen «${source.text}»: elegí el nodo de destino.`
+              : 'Modo enlace: elegí el nodo de origen y después el de destino.'}
+          </span>
+          <kbd>Esc</kbd>
+        </div>
       ) : null}
 
       <div className="canvas-tools">

@@ -9,12 +9,19 @@ export interface MindNode {
   collapsed: boolean
 }
 
+export interface MindLink {
+  id: string
+  from: NodeId
+  to: NodeId
+}
+
 export interface MindMap {
   id: string
   title: string
   rootId: NodeId
   nodes: Record<NodeId, MindNode>
   order: Record<NodeId, NodeId[]>
+  links: MindLink[]
   createdAt: number
   updatedAt: number
 }

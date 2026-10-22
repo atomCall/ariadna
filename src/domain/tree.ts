@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import type { MindMap, MindNode, NodeId } from './types'
+import type { MindLink, MindMap, MindNode, NodeId } from './types'
 
 export const PALETTE = [
   '#e2453f',
@@ -33,6 +33,7 @@ export function createMap(
     rootId,
     nodes: { [rootId]: root },
     order: { [rootId]: [] },
+    links: [],
     createdAt: now,
     updatedAt: now,
   }
@@ -40,6 +41,29 @@ export function createMap(
 
 function touch(map: MindMap): MindMap {
   return { ...map, updatedAt: Date.now() }
+}
+
+/** Los mapas guardados antes de los enlaces no traen el campo, así que se completa. */
+export function normalizeMap(map: MindMap): MindMap {
+  return Array.isArray(map.links) ? map : { ...map, links: [] }
+}
+
+export function addLink(map: MindMap, from: NodeId, to: NodeId): MindMap {
+  if (from === to) return map
+  if (!map.nodes[from] || !map.nodes[to]) return map
+  const current = map.links ?? []
+  if (current.some((link) => link.from === from && link.to === to)) return map
+  return touch({ ...map, links: [...current, { id: nanoid(), from, to }] })
+}
+
+export function removeLink(map: MindMap, linkId: string): MindMap {
+  const current = map.links ?? []
+  if (!current.some((link) => link.id === linkId)) return map
+  return touch({ ...map, links: current.filter((link) => link.id !== linkId) })
+}
+
+export function linksOf(map: MindMap, id: NodeId): MindLink[] {
+  return (map.links ?? []).filter((link) => link.from === id || link.to === id)
 }
 
 export function parentOf(map: MindMap, id: NodeId): MindNode | null {
@@ -194,8 +218,12 @@ export function removeNode(map: MindMap, id: NodeId): MindMap {
   }
   const parentId = node.parentId as NodeId
   order[parentId] = (order[parentId] ?? []).filter((childId) => childId !== id)
+  const doomedSet = new Set(doomed)
+  const links = (map.links ?? []).filter(
+    (link) => !doomedSet.has(link.from) && !doomedSet.has(link.to),
+  )
 
-  return touch({ ...map, nodes, order })
+  return touch({ ...map, nodes, order, links })
 }
 
 export function moveNode(
