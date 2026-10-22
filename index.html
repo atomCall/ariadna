@@ -10,6 +10,20 @@
     />
     <meta name="theme-color" content="#f6f3ec" />
     <title>ariadna</title>
+    <script>
+      try {
+        const saved = localStorage.getItem('ariadna-theme')
+        const dark =
+          saved === 'dark' ||
+          (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        if (dark) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1e1e1e')
+        }
+      } catch {
+        // Si localStorage falla, se queda el tema claro.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
