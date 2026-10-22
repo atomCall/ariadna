@@ -409,10 +409,11 @@ export function Canvas({ onOpenNote }: Props) {
             const isSelected = node.id === selectedId
             const isSource = node.id === linkFrom
             const value = heatValues.get(node.id) ?? null
+            const isHeat = !isRoot && heat && value !== null
             const fill = isRoot
               ? undefined
-              : heat && value !== null
-                ? heatColor(value)
+              : isHeat
+                ? heatColor(value as number)
                 : node.color
                   ? `${node.color}22`
                   : 'var(--card)'
@@ -449,7 +450,7 @@ export function Canvas({ onOpenNote }: Props) {
                 ) : null}
                 <text
                   className={
-                    isRoot ? 'node-text node-root-text' : heat ? 'node-text node-heat-text' : 'node-text'
+                    isRoot ? 'node-text node-root-text' : isHeat ? 'node-text node-heat-text' : 'node-text'
                   }
                   x={14}
                   y={NODE_H / 2 + 5}
